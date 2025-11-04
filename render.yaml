@@ -65,3 +65,6 @@ services:
     name: autoclipper-redis
     plan: free
     region: oregon
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all
