@@ -9,6 +9,7 @@ import { verifyTwitchAuth } from "./config/twitch.js";
 import { getTwitchToken, refreshTwitchToken } from "./utils/twitchTokenManager.js";
 import streamRoutes from "./routes/streamRoutes.js";
 import devRoutes from "./routes/devRoutes.js";
+import './workers/worker.js';
 
 
 
