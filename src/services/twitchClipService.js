@@ -1,17 +1,56 @@
-import pool from "../config/db.js";
+// src/services/clipService.js
+import Clip from "../models/Clip.js";
 
-// Simulated function that runs whenever a Twitch clip is auto-created
+/**
+ * Save a Twitch clip to MongoDB using `url` as unique key
+ */
 export const saveTwitchClipToDB = async (clipData) => {
-  const { id, title, url } = clipData;
+  const {
+    title,
+    url,
+    channel_name,
+    start_ts,
+    end_ts,
+    download_url,
+    method = "twitch_api",
+  } = clipData;
+
+  if (!title || !url) {
+    throw new Error("title and url are required");
+  }
+
   try {
-    await pool.query(
-      `INSERT INTO clips (clip_id, title, url)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (clip_id) DO NOTHING;`,
-      [id, title, url]
+    const clip = await Clip.findOneAndUpdate(
+      { url }, // Find by URL
+      {
+        $set: {
+          title,
+          channel_name,
+          start_ts: start_ts ? new Date(start_ts) : undefined,
+          end_ts: end_ts ? new Date(end_ts) : undefined,
+          download_url,
+          method,
+        },
+        $setOnInsert: {
+          // Only set on first insert
+          createdAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
     );
-    console.log(`✅ Saved Twitch clip: ${title}`);
+
+    console.log(`Saved clip: ${title}`);
+    return clip;
   } catch (err) {
-    console.error("❌ Error saving clip:", err.message);
+    if (err.code === 11000) {
+      console.log(`Clip already exists (duplicate URL): ${title}`);
+      return null; // Not an error — just skip
+    }
+    console.error("Error saving clip:", err.message);
+    throw err;
   }
 };
