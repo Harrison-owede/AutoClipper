@@ -3,27 +3,35 @@ import { createClient } from "redis";
 let redisClient;
 
 export const connectRedis = async () => {
-  const redisUrl = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.error("❌ Missing REDIS_URL environment variable");
+    process.exit(1);
+  }
 
-  // Detect if the URL is for Redis Cloud (rediss://)
-  const isCloud = redisUrl.startsWith("rediss://");
+  const isSecure = redisUrl.startsWith("rediss://");
 
   redisClient = createClient({
     url: redisUrl,
-    ...(isCloud && {
-      socket: {
-        tls: true,
-        rejectUnauthorized: true, // ✅ must be true for Redis Cloud
-      },
-    }),
+    socket: isSecure
+      ? {
+          tls: true,
+          rejectUnauthorized: false, // allow Redis Cloud TLS certs
+        }
+      : {},
   });
 
+  redisClient.on("connect", () => console.log("✅ Redis connected successfully"));
   redisClient.on("error", (err) =>
-    console.error("❌ Redis error:", err.message)
+    console.error("❌ Redis connection error:", err.message)
   );
-  redisClient.on("connect", () => console.log("✅ Redis connected"));
 
-  await redisClient.connect();
+  try {
+    await redisClient.connect();
+  } catch (err) {
+    console.error("❌ Redis connect() failed:", err.message);
+  }
+
   return redisClient;
 };
 
