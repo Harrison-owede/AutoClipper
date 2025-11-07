@@ -1,23 +1,22 @@
+// src/jobs/clipQueue.js
 import Queue from "bull";
+import dotenv from "dotenv";
 
-const redisUrl = process.env.REDIS_URL;
+dotenv.config();
 
-export const clipQueue = new Queue("clipQueue", {
+// ✅ Use Upstash Redis URL with TLS for secure connection
+export const clipQueue = new Queue("clipQueue", process.env.REDIS_URL, {
   redis: {
-    port: 6379,
-    host: redisUrl.replace("rediss://", "").split("@")[1].split(":")[0],
-    password: redisUrl.split("@")[0].split(":")[2],
-    tls: {}, // Upstash requires TLS
-  },
-  defaultJobOptions: {
-    removeOnComplete: true,
-    removeOnFail: true,
+    tls: {}, // important for "rediss://" URLs
   },
 });
 
-clipQueue.on("ready", () => console.log("🚀 Bull queue ready and connected"));
-clipQueue.on("error", (err) =>
-  console.error("❌ Bull queue connection error:", err.message)
-);
+clipQueue.on("ready", () => {
+  console.log("🚀 Bull queue connected to Upstash Redis and ready to process jobs");
+});
+
+clipQueue.on("error", (err) => {
+  console.error("❌ Bull queue connection error:", err.message);
+});
 
 console.log("🎯 clipQueue initialized using secure Upstash Redis (Bull v3)");
