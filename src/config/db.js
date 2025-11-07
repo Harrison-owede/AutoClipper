@@ -7,7 +7,9 @@ export const connectDB = async () => {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`✅ MongoDB Connected: ${conn.connection?.host || conn.connection?.client?.s?.options?.srvHost || 'Atlas Cluster'}`);
+
+
   } catch (err) {
     console.error(`❌ MongoDB Connection Failed: ${err.message}`);
     process.exit(1);
