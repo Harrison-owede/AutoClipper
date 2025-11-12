@@ -13,90 +13,42 @@ export const captureClip = async (url, outputDir, duration = 10) => {
 
   let realUrl;
 
-  try {
-    // 🟣 Twitch
-    if (url.includes("twitch.tv")) {
-      const username = url.split("twitch.tv/")[1].split(/[/?#]/)[0];
-      console.log(`🎯 Getting real stream URL for Twitch user: ${username}`);
-      const streams = await twitchM3U8.getStream(username);
-      if (!streams?.length) throw new Error("No live Twitch stream found");
-      realUrl = streams[0].url;
-    }
-
-    // 🔴 YouTube
-    else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      console.log("🎯 Getting real stream URL for YouTube...");
-      const info = await youtubedl(url, {
-        dumpSingleJson: true,
-        noCheckCertificates: true,
-        preferFreeFormats: true,
-        format: "best[ext=mp4]/best",
-        noWarnings: true,
-      });
-
-      const formats = info.formats?.filter(
-        (f) =>
-          f.url?.includes(".m3u8") ||
-          f.url?.includes(".mp4") ||
-          f.url?.includes(".mpd")
-      );
-
-      if (!formats?.length) throw new Error("No playable format found for YouTube");
-      const best = formats.sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-      realUrl = best.url;
-    }
-
-    // 🟢 Kick
-    else if (url.includes("kick.com")) {
-      console.log("🎯 Getting real stream URL for Kick...");
-      const info = await youtubedl(url, {
-        dumpSingleJson: true,
-        noWarnings: true,
-        preferFreeFormats: true,
-      });
-
-      const formats = info.formats?.filter((f) =>
-        f.url?.includes(".m3u8")
-      );
-
-      if (!formats?.length) throw new Error("No HLS format found for Kick");
-      realUrl = formats[0].url;
-    }
-
-    // Unsupported
-    else {
-      throw new Error("Unsupported platform — please use Twitch, YouTube, or Kick");
-    }
-
-    console.log(`✅ Found real stream: ${realUrl}`);
-    console.log("🎬 Capturing lightweight clip...");
-
-    return new Promise((resolve, reject) => {
-      ffmpeg(realUrl)
-        .addOption("-re") // process slowly, reduce CPU
-        .setDuration(duration)
-        .videoCodec("libx264") // stable codec
-        .audioCodec("aac")
-        .size("?480x?") // reduce resolution if needed
-        .outputOptions([
-          "-preset ultrafast", // faster processing
-          "-threads 1", // limit CPU usage
-          "-bufsize 512k", // small buffer for Render
-          "-maxrate 512k", // bandwidth limit
-          "-movflags +faststart", // better streamability
-        ])
-        .on("end", () => {
-          console.log(`✅ Clip saved locally: ${outputFile}`);
-          resolve(outputFile);
-        })
-        .on("error", (err) => {
-          console.error("❌ FFmpeg error:", err.message);
-          reject(err);
-        })
-        .save(outputFile);
-    });
-  } catch (err) {
-    console.error("❌ Worker error:", err.message);
-    throw err;
+  // Twitch only (for now)
+  if (url.includes("twitch.tv")) {
+    const username = url.split("twitch.tv/")[1].split(/[/?#]/)[0];
+    console.log(`🎯 Getting real stream URL for Twitch user: ${username}`);
+    const streams = await twitchM3U8.getStream(username);
+    if (!streams?.length) throw new Error("No live Twitch stream found");
+    // pick lowest quality to reduce memory
+    realUrl = streams[streams.length - 1].url;
+  } else {
+    throw new Error("Only Twitch supported in Render safe mode");
   }
+
+  console.log(`✅ Found real stream: ${realUrl}`);
+  console.log("🎬 Capturing lightweight clip...");
+
+  return new Promise((resolve, reject) => {
+    ffmpeg(realUrl)
+      .inputOptions(["-re", "-tune", "zerolatency"])
+      .outputOptions([
+        "-t", String(duration),
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-threads", "1",
+        "-bufsize", "256k",
+        "-maxrate", "256k",
+        "-vf", "scale=-1:360", // downscale to 360p
+        "-movflags", "+faststart"
+      ])
+      .on("end", () => {
+        console.log(`✅ Clip saved: ${outputFile}`);
+        resolve(outputFile);
+      })
+      .on("error", (err) => {
+        console.error("❌ FFmpeg error:", err.message);
+        reject(err);
+      })
+      .save(outputFile);
+  });
 };
