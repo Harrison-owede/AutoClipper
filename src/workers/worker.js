@@ -29,26 +29,56 @@ mongoose
   .then(() => console.log("✅ Worker connected to MongoDB"))
   .catch((err) => console.error("❌ Worker DB connection error:", err.message));
 
-// --- Helper: get Twitch HLS URL ---
+// --- Get Twitch live HLS URL ---
+async function getLiveHLS(streamerName) {
+  const tokenResp = await axios.post(
+    `https://id.twitch.tv/oauth2/token?client_id=${process.env.TWITCH_CLIENT_ID}&client_secret=${process.env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`
+  );
+  const accessToken = tokenResp.data.access_token;
+
+  const streamResp = await axios.get(
+    `https://api.twitch.tv/helix/streams?user_login=${streamerName}`,
+    {
+      headers: {
+        "Client-ID": process.env.TWITCH_CLIENT_ID,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!streamResp.data.data || streamResp.data.data.length === 0) {
+    throw new Error(`Streamer ${streamerName} is not live`);
+  }
+
+  return `https://usher.ttvnw.net/api/channel/hls/${streamerName}.m3u8?client_id=${process.env.TWITCH_CLIENT_ID}&token=${accessToken}&allow_source=true`;
+}
+
 // --- Clip live stream and upload to Cloudinary ---
 async function processLiveClip(jobData) {
-  const { streamerName, title, duration = 15 } = jobData;
+  const {
+    streamerName,
+    title,
+    duration = 120,
+    spikeComments,
+    baselineComments,
+  } = jobData;
 
   try {
-    console.log(`🎬 Processing live Twitch clip for: ${title}`);
+    console.log(`🎬 Processing live Twitch clip: ${title}`);
 
-    const hlsUrl = await getLiveStreamHLS(streamerName);
+    const hlsUrl = await getLiveHLS(streamerName);
     console.log("🔗 HLS Stream URL:", hlsUrl);
 
     const tempOutputPath = join(tmpdir(), `${Date.now()}_liveclip.mp4`);
 
     // --- Clip start time: 5 seconds before spike ---
-    const startTime = -5; // negative means start 5 seconds earlier if possible
+    const clipStart = 0; // HLS live buffer ~5s, adjusts automatically
+    const clipEnd = clipStart + duration;
 
     await new Promise((resolve, reject) => {
-      const stream = m3u8stream(hlsUrl, { start: startTime > 0 ? startTime : 0 });
+      const stream = m3u8stream(hlsUrl);
       ffmpeg(stream)
-        .setStartTime(startTime > 0 ? startTime : 0)
+        .setStartTime(clipStart)
         .setDuration(duration)
         .output(tempOutputPath)
         .on("end", resolve)
@@ -56,7 +86,7 @@ async function processLiveClip(jobData) {
         .run();
     });
 
-    // --- Upload trimmed clip to Cloudinary ---
+    // --- Upload to Cloudinary ---
     const uploadResult = await cloudinary.uploader.upload(tempOutputPath, {
       resource_type: "video",
       folder: "autoclipper_clips",
@@ -66,24 +96,26 @@ async function processLiveClip(jobData) {
 
     console.log(`✅ Cloudinary clip ready: ${uploadResult.secure_url}`);
 
-    // --- Save to DB ---
+    // --- Save to MongoDB with metadata ---
     await Clip.create({
       title,
       url: uploadResult.secure_url,
       sourceUrl: hlsUrl,
       createdAt: new Date(),
+      clipStart,
+      clipEnd,
+      spikeComments,
+      baselineComments,
+      streamerName,
     });
 
-    // --- Clean up temp file ---
     fs.unlinkSync(tempOutputPath);
-
     return uploadResult.secure_url;
   } catch (err) {
     console.error("❌ Live clip error:", err.message);
     throw err;
   }
 }
-
 
 // --- Queue processors ---
 clipQueue.process("clip", async (job) => processLiveClip(job.data));
@@ -110,10 +142,14 @@ setInterval(async () => {
       await clipQueue.add("autoClip", {
         streamerName,
         title: `AutoClip-${Date.now()}`,
-        duration: 15,
+        duration: 120,
+        spikeComments: currentComments,
+        baselineComments,
       });
     } else {
-      console.log(`📊 No spike yet: ${currentComments}/${baselineComments * 5}`);
+      console.log(
+        `📊 No spike yet: ${currentComments}/${baselineComments * 5}`
+      );
     }
   } catch (err) {
     console.error("⚠️ Spike check failed:", err.message);
