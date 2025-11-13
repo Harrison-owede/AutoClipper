@@ -1,43 +1,29 @@
-// src/workers/worker.js
+// worker.js
 import dotenv from "dotenv";
 import { v2 as cloudinary } from "cloudinary";
 import mongoose from "mongoose";
-import Clip from "../models/clipModel.js";
-import "../config/db.js";
+import Clip from "./models/clipModel.js";
+import "../config/db.js"; // your main DB connection
 import { tmpdir } from "os";
 import { join } from "path";
 import fs from "fs";
 import { exec } from "child_process";
 import axios from "axios";
 import Queue from "bull";
-import Redis from "ioredis";
 
 dotenv.config();
 
 // ---------------------------
-// Worker-specific Redis queue
+// Bull queue (Upstash Redis)
 // ---------------------------
-const redisWorkerClient = new Redis(process.env.REDIS_URL, {
-  tls: {},
-  enableReadyCheck: false,
-  maxRetriesPerRequest: null,
-});
-
-export const clipQueue = new Queue("clipQueue", {
-  createClient: function (type) {
-    switch (type) {
-      case "client":
-        return redisWorkerClient;
-      case "subscriber":
-        return new Redis(process.env.REDIS_URL, { tls: {}, enableReadyCheck: false, maxRetriesPerRequest: null });
-      default:
-        return new Redis(process.env.REDIS_URL, { tls: {}, enableReadyCheck: false, maxRetriesPerRequest: null });
-    }
+export const clipQueue = new Queue("clipQueue", process.env.REDIS_URL, {
+  redis: {
+    tls: {}, // required for Upstash
   },
 });
 
-clipQueue.on("ready", () => console.log("🚀 Bull queue (worker) ready"));
-clipQueue.on("error", (err) => console.error("❌ Bull queue (worker) error:", err.message));
+clipQueue.on("ready", () => console.log("🚀 Bull queue ready"));
+clipQueue.on("error", (err) => console.error("❌ Bull queue error:", err.message));
 
 // ---------------------------
 // Cloudinary setup
@@ -64,6 +50,7 @@ mongoose
 async function processLiveClip(jobData) {
   const { streamerLogin, title, duration = 15, spikeComments, baselineComments } = jobData;
   const safeStreamer = streamerLogin || "example_streamer";
+
   const tempPath = join(tmpdir(), `${Date.now()}_clip.mp4`);
 
   try {
@@ -108,7 +95,6 @@ async function processLiveClip(jobData) {
 
     fs.unlinkSync(tempPath);
     return uploadResult.secure_url;
-
   } catch (err) {
     console.error("❌ Live clip error:", err.message);
     return null;
@@ -157,4 +143,4 @@ setInterval(async () => {
   } catch (err) {
     console.error("⚠️ Spike check failed:", err.message);
   }
-}, 60_000); // every 60s
+}, 60_000); // check every 60s
