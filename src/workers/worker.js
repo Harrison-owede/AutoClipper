@@ -90,13 +90,22 @@ clipQueue.process("autoClip", async (job) => processLiveClip(job.data));
 clipQueue.on("completed", (job, result) => console.log(`✅ Job ${job.id} completed → ${result}`));
 clipQueue.on("failed", (job, err) => console.error(`❌ Job ${job.id} failed:`, err.message));
 
-// Auto spike detection
+// Base backend URL (set in Render env vars)
+const BASE_URL = process.env.BACKEND_URL || "https://autoclipper-8.onrender.com";
+
+// --- Auto spike detection ---
 setInterval(async () => {
   try {
-    const { data } = await axios.get(process.env.SPIKE_API_URL);
+    const url = `${BASE_URL}/api/spike`;
+    console.log(`🌐 Checking spike API: ${url}`);
+
+    const { data } = await axios.get(url);
     const { currentComments, baselineComments, streamerLogin } = data;
 
-    if (!streamerLogin) return console.warn("⚠️ No streamerLogin returned from spike API");
+    if (!streamerLogin) {
+      console.warn("⚠️ No streamerLogin returned from spike API");
+      return;
+    }
 
     if (currentComments >= baselineComments * 5) {
       console.log("🔥 Spike detected! Queuing new live clip...");
@@ -113,4 +122,4 @@ setInterval(async () => {
   } catch (err) {
     console.error("⚠️ Spike check failed:", err.message);
   }
-}, 60_000);
+}, 60_000); // check every 60s (you can lower to 5_000 for testing)
