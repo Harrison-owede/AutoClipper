@@ -9,4 +9,3 @@ RUN npm install
 COPY . .
 
 CMD ["node", "src/workers/worker.js"]
-
