@@ -111,36 +111,52 @@ clipQueue.on("completed", (job, result) => console.log(`✅ Job ${job.id} comple
 clipQueue.on("failed", (job, err) => console.error(`❌ Job ${job.id} failed:`, err.message));
 
 // ---------------------------
-// Auto spike detection
+// Auto spike detection (fully dynamic)
 // ---------------------------
 const BASE_URL = process.env.BACKEND_URL || "https://autoclipper-shb4.onrender.com";
 
+// Optionally, default streamers if frontend doesn't supply
+const DEFAULT_STREAMERS = [
+  process.env.DEFAULT_STREAMER,
+  process.env.TWITCH_BROADCASTER,
+].filter(Boolean);
+
 setInterval(async () => {
   try {
-    const url = `${BASE_URL}/api/spike?streamer=${process.env.DEFAULT_STREAMER || process.env.TWITCH_BROADCASTER || ""}`;
-    console.log(`🌐 Checking spike API: ${url}`);
+    // Fetch dynamic streamer list from your API
+    const res = await axios.get(`${BASE_URL}/api/streamers`); // you can create this endpoint
+    const streamers = Array.isArray(res.data) && res.data.length ? res.data : DEFAULT_STREAMERS;
 
-    const { data } = await axios.get(url);
-    const { currentComments, baselineComments, streamerLogin } = data;
+    for (const streamerLogin of streamers) {
+      try {
+        const url = `${BASE_URL}/api/spike?streamer=${streamerLogin}`;
+        console.log(`🌐 Checking spike API for ${streamerLogin}: ${url}`);
 
-    if (!streamerLogin) {
-      console.warn("⚠️ No streamerLogin returned from spike API");
-      return;
-    }
+        const { data } = await axios.get(url);
+        const { currentComments, baselineComments } = data;
 
-    if (currentComments >= baselineComments * 5) {
-      console.log("🔥 Spike detected! Queuing new live clip...");
-      await clipQueue.add("autoClip", {
-        streamerLogin,
-        title: `AutoClip-${Date.now()}`,
-        duration: 15,
-        spikeComments: currentComments,
-        baselineComments,
-      });
-    } else {
-      console.log(`📊 No spike yet: ${currentComments}/${baselineComments * 5}`);
+        if (!data.streamerLogin) {
+          console.warn(`⚠️ No streamerLogin returned for ${streamerLogin}`);
+          continue;
+        }
+
+        if (currentComments >= baselineComments * 5) {
+          console.log(`🔥 Spike detected for ${streamerLogin}! Queuing new live clip...`);
+          await clipQueue.add("autoClip", {
+            streamerLogin,
+            title: `AutoClip-${Date.now()}`,
+            duration: 15,
+            spikeComments: currentComments,
+            baselineComments,
+          });
+        } else {
+          console.log(`📊 No spike yet for ${streamerLogin}: ${currentComments}/${baselineComments * 5}`);
+        }
+      } catch (err) {
+        console.error(`⚠️ Spike check failed for ${streamerLogin}:`, err.message);
+      }
     }
   } catch (err) {
-    console.error("⚠️ Spike check failed:", err.message);
+    console.error("⚠️ Failed to fetch dynamic streamer list:", err.message);
   }
 }, 60_000); // check every 60s

@@ -4,15 +4,23 @@ import { getChatStats, startChatListener } from "../twitch/chatTracker.js";
 
 const router = express.Router();
 
+/**
+ * GET /api/spike?streamer=CHANNEL
+ * Returns the current chat spike stats for the requested streamer.
+ */
 router.get("/", async (req, res) => {
-  const streamerLogin = req.query.streamer || process.env.DEFAULT_STREAMER;
+  const streamerLogin = req.query.streamer;
+
   if (!streamerLogin) {
-    return res.status(400).json({ error: "Missing ?streamer=CHANNEL or set DEFAULT_STREAMER in env" });
+    return res
+      .status(400)
+      .json({ error: "Missing ?streamer=CHANNEL query parameter" });
   }
 
-  // ensure we are listening to the streamer's chat
+  // Ensure the worker is listening to this streamer's chat
   startChatListener(streamerLogin);
 
+  // Get stats for this streamer
   const stats = getChatStats(streamerLogin);
 
   return res.json({

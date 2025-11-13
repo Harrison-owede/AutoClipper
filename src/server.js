@@ -11,6 +11,7 @@ import streamRoutes from "./routes/streamRoutes.js";
 import devRoutes from "./routes/devRoutes.js";
 import { clipQueue } from "./jobs/clipQueue.js";
 import spikeRoutes from "./routes/spike.js";
+import streamersRoutes from "./routes/streamers.js";
 
 
 
@@ -66,6 +67,7 @@ setInterval(keepRefreshingTwitchToken, AUTO_REFRESH_INTERVAL);
 app.use("/api/clips", clipsRoutes);
 app.use("/api/stream", streamRoutes);
 app.use("/api/spike", spikeRoutes);
+app.use("/api/streamers", streamersRoutes);
 
 
 
