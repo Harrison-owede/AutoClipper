@@ -32,6 +32,8 @@
     "redis": "^5.8.3",
     "streamlink": "^1.0.4",
     "tmi.js": "^1.8.5",
+    "twitch": "^4.6.7",
+    "twitch-auth": "^4.6.7",
     "twitch-m3u8": "^1.1.5",
     "uuid": "^13.0.0",
     "youtube-dl-exec": "^3.0.26"
