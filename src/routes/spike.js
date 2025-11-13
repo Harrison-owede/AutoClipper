@@ -1,17 +1,23 @@
 // src/routes/spike.js
 import express from "express";
+import { getChatStats, startChatListener } from "../twitch/chatTracker.js";
+
 const router = express.Router();
 
-// Example: Simulate random comment spikes
-let baselineComments = 50;
-
 router.get("/", async (req, res) => {
-  const currentComments = Math.floor(Math.random() * 300);
-  const streamerLogin = "tolzzyyy23"; // 👈 Replace with your actual Twitch streamer username
+  const streamerLogin = req.query.streamer || process.env.DEFAULT_STREAMER;
+  if (!streamerLogin) {
+    return res.status(400).json({ error: "Missing ?streamer=CHANNEL or set DEFAULT_STREAMER in env" });
+  }
+
+  // ensure we are listening to the streamer's chat
+  startChatListener(streamerLogin);
+
+  const stats = getChatStats(streamerLogin);
 
   return res.json({
-    currentComments,
-    baselineComments,
+    currentComments: stats.count,
+    baselineComments: stats.baseline,
     streamerLogin,
   });
 });

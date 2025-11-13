@@ -117,7 +117,7 @@ const BASE_URL = process.env.BACKEND_URL || "https://autoclipper-shb4.onrender.c
 
 setInterval(async () => {
   try {
-    const url = `${BASE_URL}/api/spike`;
+    const url = `${BASE_URL}/api/spike?streamer=${process.env.DEFAULT_STREAMER || process.env.TWITCH_BROADCASTER || ""}`;
     console.log(`🌐 Checking spike API: ${url}`);
 
     const { data } = await axios.get(url);
