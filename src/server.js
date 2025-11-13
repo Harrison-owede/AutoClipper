@@ -10,7 +10,7 @@ import { getTwitchToken, refreshTwitchToken } from "./utils/twitchTokenManager.j
 import streamRoutes from "./routes/streamRoutes.js";
 import devRoutes from "./routes/devRoutes.js";
 import { clipQueue } from "./jobs/clipQueue.js";
-import commentRoutes from "./routes/commentRoutes.js";
+import spikeRoutes from "./routes/spike.js";
 
 
 
@@ -65,7 +65,8 @@ setInterval(keepRefreshingTwitchToken, AUTO_REFRESH_INTERVAL);
 // Routes
 app.use("/api/clips", clipsRoutes);
 app.use("/api/stream", streamRoutes);
-app.use("/api/comments", commentRoutes);
+app.use("/api/spike", spikeRoutes);
+
 
 
 
