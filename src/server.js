@@ -12,6 +12,9 @@ import devRoutes from "./routes/devRoutes.js";
 import { clipQueue } from "./jobs/clipQueue.js";
 import spikeRoutes from "./routes/spike.js";
 import streamersRoutes from "./routes/streamers.js";
+import { ChatClient } from "twitch-chat-client";
+import { StaticAuthProvider } from "twitch-auth/lib";
+
 
 
 
@@ -83,6 +86,29 @@ app.post("/test", (req, res) => {
 app.get("/", (req, res) => {
   res.send("🎬 AutoClipper API is running with auto-refresh Twitch tokens!");
 });
+async function startChatListener() {
+  try {
+    const authProvider = new StaticAuthProvider(
+      process.env.TWITCH_CLIENT_ID,
+      process.env.TWITCH_BOT_OAUTH
+    );
+
+    const chatClient = new ChatClient(authProvider, { channels: [process.env.STREAMER_LOGIN] });
+
+    await chatClient.connect();
+    console.log("📡 Chat listener connected for", process.env.STREAMER_LOGIN);
+
+    chatClient.onMessage((channel, user, message) => {
+      console.log(`${user}: ${message}`);
+
+      redis.incr(`comments:${process.env.STREAMER_LOGIN}`);
+    });
+  } catch (err) {
+    console.log("❌ Failed to connect to Twitch:", err);
+  }
+}
+
+startChatListener();
 
 // Start server
 app.listen(PORT, () => {

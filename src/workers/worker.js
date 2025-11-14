@@ -116,8 +116,8 @@ clipQueue.on("failed", (job, err) => console.error(`❌ Job ${job.id} failed:`, 
 const BASE_URL = process.env.BACKEND_URL || "https://autoclipper-shb4.onrender.com";
 
 // Optionally, default streamers if frontend doesn't supply
-const DEFAULT_STREAMERS = [
-  process.env.DEFAULT_STREAMER,
+const STREAMER_LOGIN  = [
+  process.env.STREAMER_LOGIN,
   process.env.TWITCH_BROADCASTER,
 ].filter(Boolean);
 
@@ -125,7 +125,7 @@ setInterval(async () => {
   try {
     // Fetch dynamic streamer list from your API
     const res = await axios.get(`${BASE_URL}/api/streamers`); // you can create this endpoint
-    const streamers = Array.isArray(res.data) && res.data.length ? res.data : DEFAULT_STREAMERS;
+    const streamers = Array.isArray(res.data) && res.data.length ? res.data : STREAMER_LOGIN;
 
     for (const streamerLogin of streamers) {
       try {
