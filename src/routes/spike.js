@@ -1,7 +1,6 @@
 // src/routes/spike.js
 import express from "express";
-import { startChatListener } from "../twitch/chatTracker.js";
-
+import { startChatListener, getChatStats } from "../twitch/chatTracker.js";
 
 const router = express.Router();
 
