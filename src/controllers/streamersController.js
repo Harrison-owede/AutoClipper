@@ -1,75 +1,61 @@
-// src/controllers/streamersController.js
-import { ChatClient } from "twitch-chat-client";
-import { StaticAuthProvider } from "twitch-auth";
+import { startChatListener, getChatStats } from "../twitch/chatTracker.js";
+import Streamer from "../models/streamerModel.js";
 import { clipQueue } from "../jobs/clipQueue.js";
-import { getTwitchToken } from "../utils/twitchTokenManager.js";
-import { getM3u8Url } from "../utils/m3u8.js";
-import Streamer from "../models/streamerModel.js"; // <-- here
 
-
-// Track active streamers to prevent duplicate monitoring
+// Track active listeners
 const activeStreamers = new Map();
 
 export async function startMonitoringStreamer(streamerLogin) {
+  if (!streamerLogin) {
+    return { message: "streamerLogin required" };
+  }
+
   if (activeStreamers.has(streamerLogin)) {
     return { message: `Already monitoring ${streamerLogin}` };
   }
 
-  const { accessToken, clientId } = await getTwitchToken();
-  const authProvider = new StaticAuthProvider(clientId, accessToken);
-  const chatClient = new ChatClient(authProvider, { channels: [streamerLogin] });
+  console.log(`🎧 Starting chat monitoring for ${streamerLogin}`);
 
-  let commentCount = 0;
-  let baseline = 5; // baseline can be dynamic later
+  // Start Twurple chat listener
+  await startChatListener(streamerLogin);
 
-  chatClient.onMessage((channel, user, message) => {
-    commentCount++;
-    if (commentCount >= baseline * 5) {
+  activeStreamers.set(streamerLogin, true);
+
+  // Check spike every 15s
+  setInterval(() => {
+    const stats = getChatStats(streamerLogin);
+
+    console.log(`📊 ${streamerLogin}: ${stats.count}/${stats.baseline}`);
+
+    if (stats.count >= stats.baseline * 5) {
       console.log(`🔥 Spike detected for ${streamerLogin}`);
-      const title = `SpikeClip-${Date.now()}`;
 
-      getM3u8Url(streamerLogin, clientId, accessToken)
-        .then(m3u8 => {
-          if (!m3u8 || m3u8 === "offline") return;
-          clipQueue.add("autoClip", {
-            streamerLogin,
-            title,
-            m3u8,
-            spikeComments: commentCount,
-            baselineComments: baseline,
-            duration: 15,
-          });
-        })
-        .catch(err => console.error(err));
+      clipQueue.add("autoClip", {
+        streamerLogin,
+        spikeComments: stats.count,
+        baselineComments: stats.baseline,
+        duration: 15
+      });
 
-      commentCount = 0; // reset after queuing
+      stats.count = 0; // reset
     }
-  });
-
-  await chatClient.connect();
-  activeStreamers.set(streamerLogin, chatClient);
+  }, 15000);
 
   return { message: `Started monitoring ${streamerLogin}` };
 }
 
-// Optional: stop monitoring
 export function stopMonitoringStreamer(streamerLogin) {
-  const chatClient = activeStreamers.get(streamerLogin);
-  if (chatClient) {
-    chatClient.disconnect();
-    activeStreamers.delete(streamerLogin);
-    return { message: `Stopped monitoring ${streamerLogin}` };
-  }
-  return { message: `${streamerLogin} was not being monitored` };
+  activeStreamers.delete(streamerLogin);
+  return { message: `Stopped monitoring ${streamerLogin}` };
 }
 
 export const getStreamers = async (req, res) => {
   try {
     const streamers = await Streamer.find({}).select("login -_id");
     const streamerLogins = streamers.map((s) => s.login);
-    res.json(streamerLogins.length ? streamerLogins : ["tolzzyyy23"]); // fallback
+
+    res.json(streamerLogins.length ? streamerLogins : ["tolzzyyy23"]);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
-
