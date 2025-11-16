@@ -14,6 +14,7 @@ import spikeRoutes from "./routes/spike.js";
 import streamersRoutes from "./routes/streamers.js";
 import { ChatClient } from "twitch-chat-client";
 import { StaticAuthProvider } from "twitch-auth";
+import { startChatListener } from "../twitch/chatTracker.js";
 
 
 
@@ -48,6 +49,8 @@ await connectRedis();
 
 // Verify Twitch credentials once at startup
 await verifyTwitchAuth();
+// Start chat listener for your streamer
+startChatListener(process.env.STREAMER_LOGIN);
 
 // 🔁 Auto-refresh Twitch token continuously every 50 minutes
 const AUTO_REFRESH_INTERVAL = 50 * 60 * 1000; // 50 minutes in milliseconds

@@ -1,68 +1,66 @@
-// src/twitch/chatTracker.js
-import tmi from "tmi.js";
+import { RefreshingAuthProvider } from "@twurple/auth";
+import { ChatClient } from "@twurple/chat";
+import fs from "fs";
 
-const trackers = {}; // { streamer: { client, count, baseline, lastResetTimer } }
+let clients = {};  // chat clients per streamer
+let stats = {};    // { streamer: { count, baseline, lastReset } }
 
-function ensureTracker(streamer) {
-  if (trackers[streamer]) return trackers[streamer];
-  trackers[streamer] = { client: null, count: 0, baseline: 50, lastResetTimer: null };
-  return trackers[streamer];
-}
-
-export function getChatStats(streamer) {
-  const t = ensureTracker(streamer);
-  return { count: t.count, baseline: t.baseline };
-}
-
-// start a chat listener for a streamer (no-op if already started)
-export function startChatListener(streamer) {
-  if (!streamer) return;
-
-  const t = ensureTracker(streamer);
-  if (t.client) {
-    // already listening; ensure the reset timer exists
-    if (!t.lastResetTimer) startResetTimer(streamer);
-    return;
+function ensureStats(streamer) {
+  if (!stats[streamer]) {
+    stats[streamer] = {
+      count: 0,
+      baseline: 50,     // start neutral
+      lastReset: Date.now()
+    };
   }
-
-  const client = new tmi.Client({
-    options: { debug: false },
-    connection: { secure: true, reconnect: true },
-    identity: {
-      username: process.env.TWITCH_BOT_USERNAME,
-      password: process.env.TWITCH_BOT_OAUTH,
-    },
-    channels: [streamer],
-  });
-
-  client.connect().catch((err) => {
-    console.warn(`⚠️ chatTracker: failed to connect to channel ${streamer}:`, err.message || err);
-  });
-
-  client.on("message", () => {
-    const s = ensureTracker(streamer);
-    s.count = (s.count || 0) + 1;
-  });
-
-  client.on("connected", () => {
-    console.log(`📡 Chat listener connected for ${streamer}`);
-  });
-
-  client.on("disconnected", (reason) => {
-    console.log(`📴 Chat listener disconnected for ${streamer}:`, reason);
-  });
-
-  t.client = client;
-  startResetTimer(streamer);
+  return stats[streamer];
 }
 
-function startResetTimer(streamer) {
-  const t = ensureTracker(streamer);
-  if (t.lastResetTimer) return;
-  // every 60s: blend baseline and reset count
-  t.lastResetTimer = setInterval(() => {
-    // adjust baseline smoothly: 80% old baseline + 20% current count
-    t.baseline = Math.max(1, Math.floor(t.baseline * 0.8 + (t.count || 0) * 0.2));
-    t.count = 0;
+export const getChatStats = (streamerLogin) => {
+  return ensureStats(streamerLogin);
+};
+
+export const startChatListener = async (streamerLogin) => {
+  if (!streamerLogin) return;
+
+  // if already listening, do nothing
+  if (clients[streamerLogin]) return;
+
+  console.log(`🚀 Starting chat listener for ${streamerLogin}`);
+
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+
+  // Load your OAuth tokens
+  const tokenData = JSON.parse(fs.readFileSync("./tokens.json", "utf8"));
+
+  const authProvider = new RefreshingAuthProvider(
+    { clientId, clientSecret },
+    tokenData
+  );
+
+  const chat = new ChatClient({
+    authProvider,
+    channels: [streamerLogin],
+  });
+
+  // Connect
+  await chat.connect();
+  console.log(`📡 Connected to Twitch chat for ${streamerLogin}`);
+
+  // Store connection
+  clients[streamerLogin] = chat;
+
+  // Handle messages
+  chat.onMessage((channel, user, message) => {
+    const s = ensureStats(streamerLogin);
+    s.count++;
+  });
+
+  // Smoothly update baseline every 60 seconds
+  setInterval(() => {
+    const s = ensureStats(streamerLogin);
+    s.baseline = Math.max(1, Math.floor(s.baseline * 0.8 + s.count * 0.2));
+    s.count = 0;
   }, 60_000);
-}
+};
