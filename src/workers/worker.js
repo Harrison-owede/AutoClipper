@@ -10,7 +10,7 @@ import fs from "fs";
 import { exec } from "child_process";
 import axios from "axios";
 import Queue from "bull";
-import { getM3u8Url } from "../utils/m3u8.js";
+import { getM3u8Url } from "../utils/getm3u8.js";
 
 dotenv.config();
 
