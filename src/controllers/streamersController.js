@@ -4,6 +4,8 @@ import { StaticAuthProvider } from "twitch-auth";
 import { clipQueue } from "../jobs/clipQueue.js";
 import { getTwitchToken } from "../utils/twitchTokenManager.js";
 import { getM3u8Url } from "../utils/m3u8.js";
+import Streamer from "../models/streamerModel.js"; // <-- here
+
 
 // Track active streamers to prevent duplicate monitoring
 const activeStreamers = new Map();
@@ -60,3 +62,14 @@ export function stopMonitoringStreamer(streamerLogin) {
   }
   return { message: `${streamerLogin} was not being monitored` };
 }
+
+export const getStreamers = async (req, res) => {
+  try {
+    const streamers = await Streamer.find({}).select("login -_id");
+    const streamerLogins = streamers.map((s) => s.login);
+    res.json(streamerLogins.length ? streamerLogins : ["tolzzyyy23"]); // fallback
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+

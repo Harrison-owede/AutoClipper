@@ -1,10 +1,8 @@
-// src/routes/streamersRoutes.js
 import express from "express";
-import { startMonitoringStreamer, stopMonitoringStreamer } from "../controllers/streamersController.js";
+import { startMonitoringStreamer, stopMonitoringStreamer, getStreamers } from "../controllers/streamersController.js";
 
 const router = express.Router();
 
-// POST /api/streamers/watch { streamerLogin }
 router.post("/watch", async (req, res) => {
   const { streamerLogin } = req.body;
   if (!streamerLogin) return res.status(400).json({ message: "streamerLogin required" });
@@ -18,7 +16,6 @@ router.post("/watch", async (req, res) => {
   }
 });
 
-// Optional: stop monitoring
 router.post("/stop", async (req, res) => {
   const { streamerLogin } = req.body;
   if (!streamerLogin) return res.status(400).json({ message: "streamerLogin required" });
@@ -31,5 +28,8 @@ router.post("/stop", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// GET /api/streamers → returns a list of streamers
+router.get("/", getStreamers);
 
 export default router;
