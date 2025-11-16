@@ -12,8 +12,6 @@ import devRoutes from "./routes/devRoutes.js";
 import { clipQueue } from "./jobs/clipQueue.js";
 import spikeRoutes from "./routes/spike.js";
 import streamersRoutes from "./routes/streamers.js";
-import { ChatClient } from "twitch-chat-client";
-import { StaticAuthProvider } from "twitch-auth";
 import { startChatListener } from "./twitch/chatTracker.js";
 
 
@@ -68,8 +66,7 @@ const keepRefreshingTwitchToken = async () => {
   }
 };
 
-// Get an initial token on startup
-await getTwitchToken();
+
 
 // Start auto-refresh loop
 setInterval(keepRefreshingTwitchToken, AUTO_REFRESH_INTERVAL);

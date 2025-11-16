@@ -10,6 +10,8 @@ import fs from "fs";
 import { exec } from "child_process";
 import axios from "axios";
 import Queue from "bull";
+import { getM3u8Url } from "../utils/m3u8.js";
+
 
 dotenv.config();
 
@@ -63,7 +65,14 @@ async function processLiveClip(jobData) {
     });
 
     // Record clip
-    const cmd = `streamlink --stdout https://twitch.tv/${safeStreamer} best | ffmpeg -y -i - -t ${duration} -c copy "${tempPath}"`;
+    const m3u8 = await getM3u8Url(safeStreamer);
+    if (m3u8 === "offline") {
+      console.log(`⚠️ Streamer ${safeStreamer} is offline. Skipping clip.`);
+      return null;
+    }
+    
+    // Record via m3u8 (MUCH more stable)
+    const cmd = `ffmpeg -i "${m3u8}" -t ${duration} -c copy "${tempPath}"`;
     await new Promise((resolve, reject) => {
       exec(cmd, (err, stdout, stderr) => {
         if (err) return reject(new Error(stderr || err.message));

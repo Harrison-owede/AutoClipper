@@ -1,3 +1,4 @@
+// chatTracker.js
 import { RefreshingAuthProvider } from "@twurple/auth";
 import { ChatClient } from "@twurple/chat";
 import fs from "fs";
@@ -22,13 +23,16 @@ export const startChatListener = async (streamerLogin) => {
     }
   );
 
-  // 🟩 FIX: Add chat intent
-await authProvider.addUserForToken(tokenData, ["chat"]);
+  // 🟩 REQUIRED FOR TWITCH CHAT WITH TWURPLE
+  await authProvider.addUserForToken(tokenData, ["chat"]);
 
-  const chat = new ChatClient({ authProvider, channels: [streamerLogin] });
+  const chat = new ChatClient({
+    authProvider,
+    channels: [streamerLogin],
+    requestMembershipEvents: true
+  });
 
   chat.onMessage((channel, user, message) => {
-    // simple chat stats
     const stats = statsMap.get(channel) || { count: 0, baseline: 10 };
     stats.count++;
     statsMap.set(channel, stats);
@@ -38,7 +42,6 @@ await authProvider.addUserForToken(tokenData, ["chat"]);
   console.log(`📡 Connected to Twitch chat for ${streamerLogin}`);
 };
 
-// ✅ Export a function to get stats
 export const getChatStats = (streamerLogin) => {
   return statsMap.get(streamerLogin) || { count: 0, baseline: 10 };
 };
