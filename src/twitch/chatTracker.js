@@ -2,67 +2,36 @@ import { RefreshingAuthProvider } from "@twurple/auth";
 import { ChatClient } from "@twurple/chat";
 import fs from "fs";
 
-let clients = {};  // chat clients per streamer
-let stats = {};    // { streamer: { count, baseline, lastReset } }
-
-// Ensure stats object exists for a streamer
-function ensureStats(streamer) {
-  if (!stats[streamer]) {
-    stats[streamer] = {
-      count: 0,
-      baseline: 50,     // start neutral
-      lastReset: Date.now()
-    };
-  }
-  return stats[streamer];
-}
-
-// Get stats for a streamer
-export const getChatStats = (streamerLogin) => {
-  return ensureStats(streamerLogin);
-};
-
-// Start chat listener for a streamer
 export const startChatListener = async (streamerLogin) => {
   if (!streamerLogin) return;
 
-  // Prevent multiple connections
-  if (clients[streamerLogin]) return;
-
-  console.log(`🚀 Starting chat listener for ${streamerLogin}`);
-
-  // Load tokens
+  // Load token
   const tokenData = JSON.parse(fs.readFileSync("./tokens.json", "utf8"));
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+
   const authProvider = new RefreshingAuthProvider(
+    { clientId, clientSecret },
+    tokenData,
     {
-      clientId: process.env.TWITCH_CLIENT_ID,
-      clientSecret: process.env.TWITCH_CLIENT_SECRET,
-    },
-    tokenData
+      onRefresh: async (newTokenData) => {
+        fs.writeFileSync("./tokens.json", JSON.stringify(newTokenData, null, 2));
+        console.log("🔄 Tokens refreshed!");
+      },
+    }
   );
 
-  // Create chat client with required intent
+  // ✅ Add the chat intent to your user token
+  await authProvider.addIntentToUser(tokenData.userId, "chat");
+  // OR, if you want to add when adding the user:
+  // await authProvider.addUserForToken(tokenData, ["chat"]);
+
   const chat = new ChatClient({
     authProvider,
     channels: [streamerLogin],
-    intents: ["chat"], // REQUIRED for Twurple v6+
+    intents: ["chat"]
   });
 
   await chat.connect();
   console.log(`📡 Connected to Twitch chat for ${streamerLogin}`);
-
-  clients[streamerLogin] = chat;
-
-  // Handle incoming messages
-  chat.onMessage((channel, user, message) => {
-    const s = ensureStats(streamerLogin);
-    s.count++;
-  });
-
-  // Smoothly update baseline every 60 seconds
-  setInterval(() => {
-    const s = ensureStats(streamerLogin);
-    s.baseline = Math.max(1, Math.floor(s.baseline * 0.8 + s.count * 0.2));
-    s.count = 0;
-  }, 60_000);
 };
