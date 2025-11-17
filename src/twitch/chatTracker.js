@@ -56,3 +56,7 @@ export const resetChatStats = (streamerLogin) => {
   const stats = statsMap.get(streamerLogin);
   if (stats) stats.count = 0;
 };
+
+export function stopChatListener(streamerLogin) {
+  // close TMI client or event listener
+}

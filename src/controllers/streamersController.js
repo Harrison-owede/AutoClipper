@@ -1,8 +1,14 @@
-import { startChatListener, getChatStats, resetChatStats } from "../twitch/chatTracker.js";
-import { clipQueue } from "../jobs/clipQueue.js";
-import Streamer from "../models/streamerModel.js";
+import { 
+  startChatListener, 
+  stopChatListener,
+  getChatStats, 
+  resetChatStats 
+} from "../twitch/chatTracker.js";
 
-const activeStreamers = new Map();
+import { clipQueue } from "../jobs/clipQueue.js";
+
+const activeStreamers = new Map();  
+// Map<streamerLogin, { intervalId }>
 
 export async function startMonitoringStreamer(streamerLogin) {
   if (!streamerLogin) return { message: "streamerLogin required" };
@@ -13,15 +19,17 @@ export async function startMonitoringStreamer(streamerLogin) {
 
   console.log(`🎧 Starting monitoring for ${streamerLogin}`);
 
+  // Start chat listener
   await startChatListener(streamerLogin);
-  activeStreamers.set(streamerLogin, true);
 
-  setInterval(() => {
+  // Create interval
+  const intervalId = setInterval(() => {
     const stats = getChatStats(streamerLogin);
+
+    if (!stats) return; // <-- 🚨 prevents crash
 
     console.log(`📊 ${streamerLogin}: ${stats.count}/${stats.baseline}`);
 
-    // spike threshold = 5x baseline
     if (stats.count >= stats.baseline * 5) {
       console.log(`🔥 Spike detected for ${streamerLogin}`);
 
@@ -32,27 +40,38 @@ export async function startMonitoringStreamer(streamerLogin) {
         duration: 15,
       });
 
-      resetChatStats(streamerLogin);  // 🔥 RESET AFTER CLIP
+      resetChatStats(streamerLogin); 
     }
   }, 15000);
+
+  // Store interval ID
+  activeStreamers.set(streamerLogin, { intervalId });
 
   return { message: `Started monitoring ${streamerLogin}` };
 }
 
-// Stop monitoring a streamer
 export function stopMonitoringStreamer(streamerLogin) {
-  if (!activeStreamers.has(streamerLogin)) {
+  const streamer = activeStreamers.get(streamerLogin);
+
+  if (!streamer) {
     return { message: `${streamerLogin} is not being monitored` };
   }
 
+  // Stop the interval
+  clearInterval(streamer.intervalId);
+
+  // Stop chat listener
+  stopChatListener(streamerLogin);
+
+  // Remove from map
   activeStreamers.delete(streamerLogin);
+
   console.log(`🛑 Stopped monitoring ${streamerLogin}`);
+
   return { message: `Stopped monitoring ${streamerLogin}` };
 }
 
 export function getStreamers(req, res) {
-  // Example: list active streamers
   const streamers = Array.from(activeStreamers.keys());
   res.json({ streamers });
 }
-
