@@ -12,6 +12,8 @@ import axios from "axios";
 import Queue from "bull";
 import { getM3u8Url } from "../utils/getm3u8.js";
 import { clipQueue } from "../jobs/clipQueue.js";
+import { apiClient } from "../auth/twitch.js";
+
 
 
 dotenv.config();
