@@ -1,5 +1,10 @@
 import express from "express";
-import { startMonitoringStreamer, getStreamers } from "../controllers/streamersController.js";
+import { 
+  startMonitoringStreamer, 
+  stopMonitoringStreamer,   // ✅ ADD THIS
+  getStreamers 
+} from "../controllers/streamersController.js";
+
 
 const router = express.Router();
 
