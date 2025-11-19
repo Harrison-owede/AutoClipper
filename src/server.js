@@ -50,8 +50,12 @@ await connectRedis();
 await verifyTwitchAuth();
 // Start chat listener for your streamer
 
-await getTwitchToken(); 
+await initTwitchTokens(); 
 startChatListener(process.env.STREAMER_LOGIN);
+
+// Auto-refresh using client_credentials
+startAutoRefresh();
+
 
 
 // 🔁 Auto-refresh Twitch token continuously every 50 minutes
@@ -67,10 +71,6 @@ const keepRefreshingTwitchToken = async () => {
   }
 };
 
-
-
-// Start auto-refresh loop
-setInterval(keepRefreshingTwitchToken, AUTO_REFRESH_INTERVAL);
 
 // Routes
 app.use("/api/clips", clipsRoutes);
