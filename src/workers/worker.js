@@ -60,6 +60,7 @@ async function processLiveClip(jobData) {
     // 2️⃣ Wait until spike happens
 
     // 3️⃣ Get live m3u8 URL with debug logs
+    console.log("Current Twitch Client-ID:", process.env.TWITCH_CLIENT_ID);
     console.log("🎯 Fetching m3u8 for streamer:", streamerLogin);
     const m3u8 = await getM3u8Url(streamerLogin);
 
