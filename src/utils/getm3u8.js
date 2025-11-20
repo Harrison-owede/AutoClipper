@@ -19,9 +19,9 @@ export async function getM3u8Url(streamerLogin) {
 
     console.log(`Streamer ${streamerLogin} is LIVE! Fetching playback token...`);
 
-    // 2. GQL – Use persisted query with the correct 2025 hash and operationName
+    // 2. GQL – Use persisted query with CORRECT operationName "PlaybackAccessToken" and verified 2025 hash
     const gqlRes = await axios.post("https://gql.twitch.tv/gql", {
-      operationName: "PlaybackAccessToken_Template",
+      operationName: "PlaybackAccessToken",
       variables: {
         isLive: true,
         login: streamerLogin.toLowerCase(),
