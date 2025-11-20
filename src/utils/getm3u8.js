@@ -19,40 +19,37 @@ export async function getM3u8Url(streamerLogin) {
 
     console.log(`Streamer ${streamerLogin} is LIVE! Fetching playback token...`);
 
-    // 2. GQL – the EXACT query Twitch's own website uses in 2025
-    const query = `
-      query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) {
-        streamPlaybackAccessToken(channelName: $login, params: {platform: "web", playerBackend: "mediaplayer", playerType: $playerType}) @include(if: $isLive) {
-          value
-          signature
-        }
-        videoPlaybackAccessToken(id: $vodID, params: {platform: "web", playerBackend: "mediaplayer", playerType: $playerType}) @include(if: $isVod) {
-          value
-          signature
-        }
-      }
-    `;
-
+    // 2. GQL – Use persisted query with the correct 2025 hash and operationName
     const gqlRes = await axios.post("https://gql.twitch.tv/gql", {
       operationName: "PlaybackAccessToken_Template",
-      query,
       variables: {
         isLive: true,
         login: streamerLogin.toLowerCase(),
         isVod: false,
         vodID: "",
         playerType: "embed"
+      },
+      extensions: {
+        persistedQuery: {
+          version: 1,
+          sha256Hash: "0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712"
+        }
       }
     }, {
       headers: {
         "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Referer": "https://www.twitch.tv/",
-        "Origin": "https://www.twitch.tv"
+        "Referer": "https://www.twitch.tv/directory/following",
+        "Origin": "https://www.twitch.tv",
+        "X-Device-Id": "TW96a1b2c3d4e5f6g7h8i9j0k1l2m3n4"
       }
     });
 
     console.log("GQL Response:", JSON.stringify(gqlRes.data, null, 2));
+
+    if (gqlRes.data.errors) {
+      throw new Error(`GQL Errors: ${JSON.stringify(gqlRes.data.errors)}`);
+    }
 
     const tokenData = gqlRes.data.data.streamPlaybackAccessToken;
     if (!tokenData?.value || !tokenData?.signature) {
@@ -72,6 +69,9 @@ export async function getM3u8Url(streamerLogin) {
 
   } catch (err) {
     console.error("Failed to get m3u8:", err.response?.data || err.message);
+    if (err.response?.status === 400) {
+      console.error("400 Bad Request - likely Client-ID issue. Try regenerating your Twitch app.");
+    }
     return null;
   }
 }
