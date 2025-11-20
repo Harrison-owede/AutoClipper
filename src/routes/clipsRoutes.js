@@ -1,10 +1,10 @@
-// src/routes/clipsRoutes.js
+// routes/clipRoutes.js
 import express from "express";
-import { getClips, createClip } from "../controllers/clipsController.js";
+import { getClips, createClip } from "../controllers/clipController.js";
 
 const router = express.Router();
 
-router.get("/", getClips);          // GET /api/clips
-router.post("/create", createClip); // POST /api/clips/create
+router.get("/clips", getClips);        // → https://yoursite.com/clips (HTML + JSON)
+router.post("/clips", createClip);     // → manual trigger endpoint
 
 export default router;
