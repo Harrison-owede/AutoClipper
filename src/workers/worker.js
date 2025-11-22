@@ -6,25 +6,13 @@ import Clip from "../models/clipModel.js";
 import "../config/db.js";
 import { tmpdir } from "os";
 import { join } from "path";
-import fs from "fs";
 import { exec } from "child_process";
-import axios from "axios";
-import Queue from "bull";
 import { getM3u8Url } from "../utils/getm3u8.js";
 import { clipQueue } from "../jobs/clipQueue.js";
-import { apiClient } from "../auth/twitch.js";
 
 dotenv.config();
 
-// ---------------------------
-// Bull queue
-// ---------------------------
-clipQueue.on("ready", () => console.log("Bull queue ready"));
-clipQueue.on("error", (err) => console.error("Bull queue error:", err.message));
-
-// ---------------------------
-// Cloudinary
-// ---------------------------
+// Cloudinary config
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -33,22 +21,17 @@ cloudinary.config({
 
 console.log("Streamlink clip worker started");
 
-// ---------------------------
 // MongoDB
-// ---------------------------
-mongoose
-  .connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log("Worker connected to MongoDB"))
-  .catch((err) => console.error("Worker DB connection error:", err.message));
+  .catch(err => console.error("Worker DB error:", err.message));
 
-// ---------------------------
-// FULLY REACTIVE CLIP FUNCTION — 90s + NO AUTO DELETE + FRONTEND ALERT
-// ---------------------------
+// MAIN CLIP FUNCTION — FINAL VERSION
 async function processLiveClip(jobData) {
   const {
     streamerLogin,
     title = `${streamerLogin}_${Date.now()}`,
-    duration = 90,           // ← 90 seconds by default now
+    duration = 90,
     spikeComments,
     baselineComments
   } = jobData;
@@ -56,13 +39,11 @@ async function processLiveClip(jobData) {
   const tempPath = join(tmpdir(), `${Date.now()}_clip.mp4`);
 
   try {
-    console.log("Current Twitch Client-ID:", process.env.TWITCH_CLIENT_ID);
     console.log("Fetching m3u8 for streamer:", streamerLogin);
-
     const m3u8 = await getM3u8Url(streamerLogin);
 
     if (!m3u8 || m3u8 === "offline") {
-      console.log(`Streamer ${streamerLogin} is offline or m3u8 failed`);
+      console.log(`Streamer ${streamerLogin} is offline`);
       return null;
     }
 
@@ -76,10 +57,9 @@ async function processLiveClip(jobData) {
       });
     });
 
-    // ———— FIXED BLOCK START ————
     const safePublicId = title.replace(/[^a-zA-Z0-9_-]/g, "_");
-    
-    // START ASYNC UPLOAD → THEN EXIT IMMEDIATELY
+
+    // FIRE AND FORGET — NO AWAIT, NO RETURN, NO WAIT
     cloudinary.uploader.upload(tempPath, {
       resource_type: "video",
       folder: "autoclipper_clips",
@@ -91,47 +71,43 @@ async function processLiveClip(jobData) {
         { quality: "auto", fetch_format: "mp4" }
       ],
       eager_notification_url: "https://autoclipper-shb4.onrender.com/webhook/cloudinary"
-    }).then(() => {
-      console.log(`Async upload started for ${safePublicId} — will finish in background`);
-    }).catch(err => {
-      console.error("Async upload failed to start:", err.message);
-    });
+    })
+    .then(() => console.log(`Async upload STARTED: ${safePublicId}`))
+    .catch(err => console.error("Upload failed to start:", err.message));
 
-    // INSTANT FEEDBACK — TELL FRONTEND CLIP IS COMING
+    // INSTANT FEEDBACK TO FRONTEND
     if (global.io) {
       global.io.emit("clip-success", {
-        message: `SPIKE DETECTED → Recording 90s for ${streamerLogin.toUpperCase()}...`,
+        message: `90s RECORDING STARTED → ${streamerLogin.toUpperCase()}`,
         url: null,
         title,
         streamer: streamerLogin,
         duration,
         spike: spikeComments,
         timestamp: new Date().toLocaleString(),
-        status: "recording"
+        status: "uploading"
       });
     }
 
-    // DO NOT WAIT FOR CLOUDINARY → RETURN SUCCESS NOW
-    console.log(`90s clip recorded locally: ${tempPath} → async upload started`);
-    return `async_upload_started_${safePublicId}`;
-    // ———— FIXED BLOCK END ————
+    console.log(`90s clip saved locally: ${tempPath} → upload in background`);
+    return `uploaded_async_${safePublicId}`;
 
   } catch (err) {
     console.error("Live clip error:", err.message);
-    console.log(`Failed clip still saved at: ${tempPath} (for inspection)`);
+    console.log(`Failed clip saved at: ${tempPath}`);
     return null;
   }
 }
 
-// ---------------------------
-// Queue processors
-// ---------------------------
+// QUEUE
 clipQueue.process("clip", async (job) => processLiveClip(job.data));
 clipQueue.process("autoClip", async (job) => processLiveClip(job.data));
 
-clipQueue.on("completed", (job, result) => 
-  console.log(`Job ${job.id} completed → ${resultado || "no URL"}`)
-);
-clipQueue.on("failed", (job, err) => 
-  console.error(`Job ${job.id} failed:`, err.message)
-);
+// FIXED: "resultado" → "result"
+clipQueue.on("completed", (job, result) => {
+  console.log(`Job ${job.id} completed → ${result || "no URL"}`);
+});
+
+clipQueue.on("failed", (job, err) => {
+  console.error(`Job ${job.id} failed:`, err.message);
+});
