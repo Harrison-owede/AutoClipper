@@ -94,6 +94,35 @@ app.get("/", (req, res) => {
 });
 
 
+// webhook route – add this anywhere after app = express()
+app.post("/webhook/cloudinary", (req, res) => {
+  const notification = req.body;
+
+  // Only care about completed eager transformations
+  if (notification.notification_type === "eager" && notification.eager) {
+    notification.eager.forEach(asset => {
+      if (asset.status === "complete" || asset.status === "processing") {
+        // Emit to ALL connected browsers
+        if (global.io) {
+          global.io.emit("clip-success", {
+            message: `90s BANGER READY → ${notification.public_id.split("_")[0].toUpperCase()}`,
+            url: asset.secure_url || notification.secure_url,
+            title: notification.public_id,
+            streamer: notification.public_id.split("_")[0],
+            duration: 90,
+            timestamp: new Date().toLocaleString(),
+            isEager: true
+          });
+        }
+      }
+    });
+  }
+
+  // Always respond 200 so Cloudinary doesn’t retry
+  res.status(200).send("OK");
+});
+
+
 // Start server
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);

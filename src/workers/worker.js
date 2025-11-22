@@ -82,6 +82,13 @@ async function processLiveClip(jobData) {
       folder: "autoclipper_clips",
       public_id: safePublicId,
       fetch_format: "mp4",
+      eager_async: true,
+      eager: [
+        { streaming_profile: "hd", format: "m3u8" },
+        { quality: "auto", fetch_format: "mp4" }
+      ],
+      // THIS LINE → YOU GET NOTIFIED THE SECOND IT’S DONE
+      eager_notification_url: "https://autoclipper-shb4.onrender.com/webhook/cloudinary"
     });
 
     console.log(`CLIP SUCCESS → ${uploadResult.secure_url}`);
