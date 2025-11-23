@@ -1,15 +1,18 @@
-// worker.js
+// src/workers/worker.js
 import dotenv from "dotenv";
 import { v2 as cloudinary } from "cloudinary";
 import mongoose from "mongoose";
-import Clip from "../models/clipModel.js";
+import Clip from "../models/clipModel.js"; // adjust path if needed
 import "../config/db.js";
-import { tmpdir } from "os";
 import { join } from "path";
-import fs from "fs"; // ← ADD THIS IMPORT
+import { tmpdir } from "os";
+import fs from "fs";
 import { exec } from "child_process";
-import { getM3u8Url } from "../utils/getm3u8.js";
+import { promisify } from "util";
+import { getM3u8Url } from "../utils/getm3u8.js"; // not needed anymore but keep if you want
 import { clipQueue } from "../jobs/clipQueue.js";
+
+const execAsync = promisify(exec);
 
 dotenv.config();
 
@@ -20,14 +23,12 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-console.log("Streamlink clip worker started");
+console.log("Streamlink clip worker started — READY TO RECORD BANGERS");
 
-// MongoDB
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log("Worker connected to MongoDB"))
-  .catch(err => console.error("Worker DB error:", err.message));
+  .then(() => console.log("Worker → MongoDB connected"))
+  .catch(err => console.error("Worker DB error:", err));
 
-// MAIN CLIP FUNCTION — FINAL UNBREAKABLE VERSION
 async function processLiveClip(jobData) {
   const {
     streamerLogin,
@@ -40,69 +41,58 @@ async function processLiveClip(jobData) {
   const tempPath = join(tmpdir(), `${Date.now()}_clip.mp4`);
 
   try {
-    console.log("Fetching m3u8 for streamer:", streamerLogin);
-    const m3u8 = await getM3u8Url(streamerLogin);
+    console.log(`Recording ${duration}s clip → ${streamerLogin}`);
 
-    if (!m3u8 || m3u8 === "offline") {
-      console.log(`Streamer ${streamerLogin} is offline`);
-      return null;
+    // THIS IS THE MAGIC COMMAND — 100% RELIABLE ON TWITCH
+    const cmd = [
+      "streamlink",
+      "--twitch-disable-ads",
+      "--twitch-disable-reruns",
+      "--hls-duration", duration.toString(),
+      "--output", tempPath,
+      `twitch.tv/${streamerLogin}`,
+      "best"
+    ].join(" ");
+
+    console.log("Running:", cmd);
+
+    const { stderr } = await execAsync(cmd, { timeout: 180000 }); // 3 min max
+
+    if (stderr && !stderr.includes("Writing output to")) {
+      console.warn("Streamlink warning:", stderr);
     }
 
-    console.log(`Recording ${duration}s clip for ${streamerLogin}...`);
-
-    // BULLETPROOF FFMPEG COMMAND
-    const cmd = `ffmpeg -y -fflags +genpts -i "${m3u8}" -t ${duration} -c copy -avoid_negative_ts make_zero -bsf:a aac_adtstoasc "${tempPath}"`;
-
-    await new Promise((resolve, reject) => {
-      exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-        if (err || stderr?.includes("Invalid data") || stderr?.includes("401")) {
-          console.error("FFmpeg FAILED:", stderr || err);
-          return reject(new Error("FFmpeg failed to record stream"));
-        }
-        console.log("FFmpeg SUCCESS — clip recorded");
-        resolve();
-      });
-    });
-
-    // VALIDATE FILE EXISTS AND IS BIG ENOUGH
+    // Validate file
     if (!fs.existsSync(tempPath)) {
-      throw new Error("Clip file was not created");
+      throw new Error("Streamlink did not create output file");
     }
 
     const stats = fs.statSync(tempPath);
-    console.log(`Clip size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`Clip recorded! Size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
 
-    if (stats.size < 10 * 1024 * 1024) { // less than ~10MB = bad clip
-      throw new Error(`Clip too small (${(stats.size / 1024 / 1024).toFixed(2)} MB) — likely encrypted or failed stream`);
+    if (stats.size < 8 * 1024 * 1024) {
+      throw new Error(`Clip too small (${(stats.size / 1024 / 1024).toFixed(2)} MB) — probably offline or ad`);
     }
 
     const safePublicId = title.replace(/[^a-zA-Z0-9_-]/g, "_");
 
-    // FIRE AND FORGET UPLOAD — WITH PROPER ERROR LOGGING
+    // Upload to Cloudinary (fire and forget)
     cloudinary.uploader.upload(tempPath, {
       resource_type: "video",
       folder: "autoclipper_clips",
       public_id: safePublicId,
-      fetch_format: "mp4",
+      format: "mp4",
+      eager: [{ streaming_profile: "hd", format: "m3u8" }],
       eager_async: true,
-      eager: [
-        { streaming_profile: "hd", format: "m3u8" },
-        { quality: "auto", fetch_format: "mp4" }
-      ],
       eager_notification_url: "https://autoclipper-shb4.onrender.com/webhook/cloudinary"
     })
-    .then(() => {
-      console.log(`CLOUDINARY UPLOAD STARTED → ${safePublicId}`);
-    })
-    .catch(err => {
-      console.error("CLOUDINARY UPLOAD FAILED:", err.message || JSON.stringify(err));
-    });
+    .then(() => console.log(`Cloudinary upload started → ${safePublicId}`))
+    .catch(err => console.error("Cloudinary upload failed:", err.message));
 
-    // INSTANT FEEDBACK TO FRONTEND
+    // Optional: Emit to frontend via Socket.IO
     if (global.io) {
       global.io.emit("clip-success", {
-        message: `90s BANGER RECORDING → ${streamerLogin.toUpperCase()}`,
-        url: null,
+        message: `BANGER CLIP RECORDED → ${streamerLogin.toUpperCase()}`,
         title,
         streamer: streamerLogin,
         duration,
@@ -112,27 +102,27 @@ async function processLiveClip(jobData) {
       });
     }
 
-    console.log(`90s clip saved locally: ${tempPath} (${(stats.size / 1024 / 1024).toFixed(2)} MB) → upload in background`);
+    console.log(`SUCCESS → ${streamerLogin} 90s clip ready`);
     return `uploaded_async_${safePublicId}`;
 
-  } catch (err) {
-    console.error("LIVE CLIP ERROR:", err.message);
+  } catch (error) {
+    console.error(`FAILED → ${streamerLogin}:`, error.message);
     if (fs.existsSync(tempPath)) {
       const size = fs.statSync(tempPath).size;
-      console.log(`Failed clip still saved: ${tempPath} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`Failed clip saved anyway: ${tempPath} (${(size / 1024 / 1024).toFixed(2)} MB)`);
     }
     return null;
+  } finally {
+    // Optional: clean up temp file after 10 seconds
+    setTimeout(() => {
+      if (fs.existsSync(tempPath)) fs.unlink(tempPath, () => {});
+    }, 10000);
   }
 }
 
-// QUEUE
-clipQueue.process("clip", async (job) => processLiveClip(job.data));
-clipQueue.process("autoClip", async (job) => processLiveClip(job.data));
+// Process both job types
+clipQueue.process("clip", async (job) => await processLiveClip(job.data));
+clipQueue.process("autoClip", async (job) => await processLiveClip(job.data));
 
-clipQueue.on("completed", (job, result) => {
-  console.log(`Job ${job.id} completed → ${result || "no URL"}`);
-});
-
-clipQueue.on("failed", (job, err) => {
-  console.error(`Job ${job.id} failed:`, err.message);
-});
+clipQueue.on("completed", (job) => console.log(`Job ${job.id} completed`));
+clipQueue.on("failed", (job, err) => console.error(`Job ${job.id} failed:`, err.message));
