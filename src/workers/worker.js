@@ -82,12 +82,17 @@ async function processLiveClip(jobData) {
       folder: "autoclipper_clips",
       public_id: safePublicId,
       format: "mp4",
+      async: true,                          // ← THIS IS THE MISSING LINE
       eager: [{ streaming_profile: "hd", format: "m3u8" }],
       eager_async: true,
       eager_notification_url: "https://autoclipper-shb4.onrender.com/webhook/cloudinary"
     })
-    .then(() => console.log(`Cloudinary upload started → ${safePublicId}`))
-    .catch(err => console.error("Cloudinary upload failed:", err.message));
+    .then(result => {
+      console.log(`Cloudinary async upload ACCEPTED → ${result.public_id}`);
+    })
+    .catch(err => {
+      console.error("Cloudinary rejected upload:", err.message);
+    });
 
     // Optional: Emit to frontend via Socket.IO
     if (global.io) {
