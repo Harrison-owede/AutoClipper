@@ -1,38 +1,41 @@
 // src/workers/kickChatWorker.js
-import { createClient } from "@retconned/kick-js";
+import KickStreamChat from "kick-stream-chat";
 import { clipQueue } from "../jobs/clipQueue.js";
 
-let kickConnection;
+let kickChat;
 
 export const startKickMonitoring = (username) => {
-  kickConnection = createClient(username, { logger: false, readOnly: true });
+  try {
+    kickChat = new KickStreamChat(username);
 
-  kickConnection.on("ready", () => {
-    console.log(`Kick monitoring → ${username}`);
-  });
+    kickChat.on("message", (message) => {
+      // Spike detection (use your counter logic)
+      const messageCount = 1;  // Increment global message counter here
 
-  kickConnection.on("message", (messageData) => {
-    // Spike detection (add your counter)
-    const messageCount = 1; // Increment global counter here
+      if (messageCount > 50) {  // Threshold for spike
+        console.log(`KICK SPIKE → ${username} (${messageCount} msgs)`);
+        clipQueue.add("clip", {
+          platform: "kick",
+          streamerLogin: username,
+          title: `kick_spike_${Date.now()}`,
+          duration: 90,
+          spikeComments: messageCount
+        });
+      }
+    });
 
-    if (messageCount > 50) {
-      console.log(`KICK SPIKE → ${username} (${messageCount})`);
-      clipQueue.add("clip", {
-        platform: "kick",
-        streamerLogin: username,
-        title: `kick_spike_${Date.now()}`,
-        duration: 90,
-        spikeComments: messageCount
-      });
-    }
-  });
+    kickChat.connect();
+    console.log(`Kick monitoring started → ${username}`);
 
-  kickConnection.on("error", (err) => {
-    console.error("Kick chat error:", err.message);
-    kickConnection.connect(); // Auto-reconnect
-  });
-
-  kickConnection.login(); // No credentials needed for read-only
+  } catch (err) {
+    console.error("Kick chat init error:", err.message);
+  }
 };
 
-export const stopKickMonitoring = () => kickConnection && kickConnection.logout();
+export const stopKickMonitoring = () => {
+  if (kickChat) {
+    kickChat.disconnect();
+    kickChat = null;
+    console.log("Kick monitoring stopped");
+  }
+};
