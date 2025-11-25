@@ -1,7 +1,7 @@
 # Use Node.js 22
 FROM node:22-bullseye
 
-# Install system deps + yt-dlp
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ffmpeg \
@@ -11,15 +11,16 @@ RUN apt-get update && \
     pip3 install --no-cache-dir streamlink yt-dlp && \
     rm -rf /var/lib/apt/lists/*
 
+# Set working dir
 WORKDIR /app
 
-# COPY package files
+# Copy package.json & install (SKIP POSTINSTALL)
 COPY package*.json ./
-
-# Install npm deps INSIDE Docker (Puppeteer downloads Linux Chromium = fast)
+ENV YT_DLP_EXEC_SKIP_DOWNLOAD=true  
 RUN npm install --production
 
-# Copy source
+# Copy all source files
 COPY . .
 
+# Run your worker
 CMD ["node", "src/workers/worker.js"]
